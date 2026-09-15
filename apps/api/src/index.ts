@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.routes';
 import agentsRoutes from './routes/agents.routes';
 import camerasRoutes from './routes/cameras.routes';
 import eventsRoutes from './routes/events.routes';
+import facesRoutes from './routes/faces.routes';
 
 const app = express();
 app.use(cors());
@@ -20,6 +21,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/agents', agentsRoutes);
 app.use('/api/cameras', camerasRoutes);
 app.use('/api/events', eventsRoutes);
+app.use('/api/faces', facesRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, {

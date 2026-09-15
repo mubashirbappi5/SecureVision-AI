@@ -10,6 +10,13 @@ export default function Dashboard() {
   const [events, setEvents] = useState<DetectionEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  // Face Upload State
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadCategory, setUploadCategory] = useState<"friend" | "enemy">("friend");
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<{type: "success" | "error", message: string} | null>(null);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -74,6 +81,39 @@ export default function Dashboard() {
   const handleLogout = () => {
     localStorage.removeItem("sv_token");
     router.push("/login");
+  };
+
+  const handleFaceUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile) return;
+
+    setUploading(true);
+    setUploadStatus(null);
+    
+    const token = localStorage.getItem("sv_token");
+    const formData = new FormData();
+    formData.append("image", uploadFile);
+    formData.append("category", uploadCategory);
+
+    try {
+      const res = await fetch("http://localhost:3001/api/faces/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setUploadStatus({ type: "success", message: "Face uploaded successfully! Agent will retrain shortly." });
+        setUploadFile(null); // clear file
+      } else {
+        setUploadStatus({ type: "error", message: data.error || "Upload failed." });
+      }
+    } catch (err) {
+      setUploadStatus({ type: "error", message: "Network error during upload." });
+    } finally {
+      setUploading(false);
+    }
   };
 
   if (loading) {
@@ -164,6 +204,56 @@ export default function Dashboard() {
               ))
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Face Management Section */}
+      <div className="mt-6 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Users className="w-4 h-4"/> Face Database Management
+          </h2>
+        </div>
+        <div className="p-6">
+          <form onSubmit={handleFaceUpload} className="flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-sm font-medium text-slate-400 mb-2">Upload Photo</label>
+              <input 
+                type="file" 
+                accept="image/*"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-800 file:text-emerald-400 hover:file:bg-slate-700 transition-colors"
+                required
+              />
+            </div>
+            
+            <div className="w-full md:w-64">
+              <label className="block text-sm font-medium text-slate-400 mb-2">Classification</label>
+              <select 
+                value={uploadCategory}
+                onChange={(e) => setUploadCategory(e.target.value as "friend" | "enemy")}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="friend">Friend (Allowed)</option>
+                <option value="enemy">Enemy (Threat)</option>
+              </select>
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={uploading || !uploadFile}
+              className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploading ? "Uploading..." : "Add to Database"}
+            </button>
+          </form>
+
+          {uploadStatus && (
+            <div className={`mt-4 p-3 rounded-lg text-sm flex items-center gap-2 ${uploadStatus.type === 'success' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800' : 'bg-red-900/30 text-red-400 border border-red-800'}`}>
+              <div className={`w-2 h-2 rounded-full ${uploadStatus.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              {uploadStatus.message}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -41,42 +41,64 @@ def main():
     
     friends_dir = os.path.join("data", "friends")
     enemies_dir = os.path.join("data", "enemies")
-    face_samples = []
-    face_labels = []
     
     # Labels
     FRIEND_LABEL = 1
     ENEMY_LABEL = 2
     
-    def load_faces_from_dir(directory, label):
-        if os.path.exists(directory):
-            print(f"Scanning for faces in {directory} (Label: {label})...")
-            for img_name in os.listdir(directory):
-                if img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    img_path = os.path.join(directory, img_name)
-                    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                    if img is None:
-                        continue
-                    faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
-                    for (x, y, w, h) in faces:
-                        face_roi = img[y:y+h, x:x+w]
-                        face_roi = cv2.resize(face_roi, (200, 200))
-                        face_samples.append(face_roi)
-                        face_labels.append(label)
-        else:
-            print(f"No directory found: {directory}")
+    face_samples = []
+    
+    def get_dir_mtime(directory):
+        if not os.path.exists(directory): return 0
+        try:
+            # Get max mtime of files in directory
+            files = [os.path.join(directory, f) for f in os.listdir(directory)]
+            if not files: return os.path.getmtime(directory)
+            return max(os.path.getmtime(f) for f in files)
+        except:
+            return 0
+            
+    last_friends_mtime = 0
+    last_enemies_mtime = 0
+    
+    def train_face_recognizer():
+        nonlocal face_samples, last_friends_mtime, last_enemies_mtime
+        face_samples = []
+        face_labels = []
+        
+        last_friends_mtime = get_dir_mtime(friends_dir)
+        last_enemies_mtime = get_dir_mtime(enemies_dir)
+        
+        def load_faces_from_dir(directory, label):
+            if os.path.exists(directory):
+                print(f"Scanning for faces in {directory} (Label: {label})...")
+                for img_name in os.listdir(directory):
+                    if img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        img_path = os.path.join(directory, img_name)
+                        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                        if img is None:
+                            continue
+                        faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
+                        for (x, y, w, h) in faces:
+                            face_roi = img[y:y+h, x:x+w]
+                            face_roi = cv2.resize(face_roi, (200, 200))
+                            face_samples.append(face_roi)
+                            face_labels.append(label)
+            else:
+                print(f"No directory found: {directory}")
 
-    load_faces_from_dir(friends_dir, FRIEND_LABEL)
-    load_faces_from_dir(enemies_dir, ENEMY_LABEL)
-                    
-    if len(face_samples) > 0:
-        print(f"Training face recognizer on {len(face_samples)} total faces...")
+        load_faces_from_dir(friends_dir, FRIEND_LABEL)
+        load_faces_from_dir(enemies_dir, ENEMY_LABEL)
+                        
+        if len(face_samples) > 0:
+            print(f"Training face recognizer on {len(face_samples)} total faces...")
             recognizer.train(face_samples, np.array(face_labels))
             print("Training complete.")
         else:
-            print("No valid faces found in friends directory.")
-    else:
-        print("No friends directory found.")
+            print("No valid faces found in directories.")
+
+    # Initial Training
+    train_face_recognizer()
 
     model = None
     if not args.mock_detection:
@@ -133,6 +155,7 @@ def main():
     print("Starting video stream...")
     
     last_event_time = {}
+    last_check_time = time.time()
 
     while True:
         if cap is None or not cap.isOpened():
@@ -140,6 +163,15 @@ def main():
             if cap is None:
                 time.sleep(5.0)
                 continue
+
+        current_time = time.time()
+        
+        # Hot reload face recognizer every 5 seconds if folders changed
+        if current_time - last_check_time > 5.0:
+            last_check_time = current_time
+            if get_dir_mtime(friends_dir) > last_friends_mtime or get_dir_mtime(enemies_dir) > last_enemies_mtime:
+                print("Detected changes in face database. Retraining...")
+                train_face_recognizer()
 
         ret, frame = cap.read()
         if not ret:
