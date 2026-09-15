@@ -4,6 +4,8 @@ import time
 import requests
 import uuid
 import datetime
+import os
+import numpy as np
 from ultralytics import YOLO
 
 # Configuration
@@ -31,6 +33,42 @@ def main():
 
     camera_id = args.camera_id
     source = args.rtsp if args.rtsp else args.source
+
+    # Face Recognition Setup
+    print("Initializing Face Recognition...")
+    face_cascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+    recognizer = cv2.face.LBPHFaceRecognizer_create()
+    
+    friends_dir = os.path.join("data", "friends")
+    face_samples = []
+    face_labels = []
+    
+    # Label 1 will mean "friend"
+    FRIEND_LABEL = 1
+    
+    if os.path.exists(friends_dir):
+        print(f"Scanning for friends in {friends_dir}...")
+        for img_name in os.listdir(friends_dir):
+            if img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                img_path = os.path.join(friends_dir, img_name)
+                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    continue
+                faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
+                for (x, y, w, h) in faces:
+                    face_roi = img[y:y+h, x:x+w]
+                    face_roi = cv2.resize(face_roi, (200, 200))
+                    face_samples.append(face_roi)
+                    face_labels.append(FRIEND_LABEL)
+                    
+        if len(face_samples) > 0:
+            print(f"Training face recognizer on {len(face_samples)} friend faces...")
+            recognizer.train(face_samples, np.array(face_labels))
+            print("Training complete.")
+        else:
+            print("No valid faces found in friends directory.")
+    else:
+        print("No friends directory found.")
 
     model = None
     if not args.mock_detection:
@@ -118,10 +156,36 @@ def main():
                     for box, track_id, conf in zip(boxes, track_ids, confidences):
                         x1, y1, x2, y2 = map(int, box)
                     
+                    # Ensure bbox is within frame
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
+                    
+                    person_type = "enemy"
+                    severity = "critical"
+                    color = (0, 0, 255)
+                    
+                    # Try Face Recognition if LBPH is trained
+                    if len(face_samples) > 0 and (y2 - y1) > 0 and (x2 - x1) > 0:
+                        roi_color = frame[y1:y2, x1:x2]
+                        roi_gray = cv2.cvtColor(roi_color, cv2.COLOR_BGR2GRAY)
+                        faces = face_cascade.detectMultiScale(roi_gray, scaleFactor=1.1, minNeighbors=3)
+                        
+                        for (fx, fy, fw, fh) in faces:
+                            face_roi = roi_gray[fy:fy+fh, fx:fx+fw]
+                            face_roi = cv2.resize(face_roi, (200, 200))
+                            label_id, distance = recognizer.predict(face_roi)
+                            
+                            # Lower distance means better match (typical threshold for LBPH is < 80-100)
+                            if label_id == FRIEND_LABEL and distance < 85:
+                                person_type = "friend"
+                                severity = "info"
+                                color = (0, 255, 0)
+                                break  # matched a friend, no need to check other faces in this bbox
+                    
                     # Draw BBox
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    label = f"Human {conf*100:.0f}%"
-                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                    label = f"{person_type.capitalize()} {conf*100:.0f}%"
+                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
                     # Dispatch Event (throttle per track_id)
                     current_time = time.time()
@@ -133,8 +197,8 @@ def main():
                             "camera_id": camera_id,
                             "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                             "event_type": "person_detected",
-                            "person_type": "unknown",
-                            "severity": "info",
+                            "person_type": person_type,
+                            "severity": severity,
                             "confidence": float(conf),
                             "track_id": track_id,
                             "bounding_box": [x1, y1, x2, y2]
@@ -151,15 +215,15 @@ def main():
                     "camera_id": camera_id,
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "event_type": "person_detected",
-                    "person_type": "unknown",
-                    "severity": "info",
+                    "person_type": "enemy",
+                    "severity": "critical",
                     "confidence": 0.99,
                     "track_id": 999,
                     "bounding_box": [10, 10, 100, 200]
                 }
                 send_event(event_data)
-                cv2.rectangle(frame, (10, 10), (100, 200), (0, 255, 0), 2)
-                cv2.putText(frame, "Human 99% (MOCK)", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.rectangle(frame, (10, 10), (100, 200), (0, 0, 255), 2)
+                cv2.putText(frame, "Enemy 99% (MOCK)", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
         # Show live preview (disabled for background testing)
         # cv2.imshow("SecureVision Agent (Local Preview)", frame)
