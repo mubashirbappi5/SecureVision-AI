@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: securevision-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: securevision
+      POSTGRES_PASSWORD: securepassword
+      POSTGRES_DB: securevision_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

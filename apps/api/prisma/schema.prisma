@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Agent {
+  id        String   @id @default(uuid())
+  name      String
+  token     String   @unique
+  status    String   @default("offline")
+  cpu       Float?
+  ram       Float?
+  gpu       Float?
+  version   String?
+  lastHeartbeat DateTime?
+  cameras   Camera[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Camera {
+  id          String   @id @default(uuid())
+  name        String
+  sourceType  String
+  url         String
+  enabled     Boolean  @default(true)
+  status      String   @default("offline")
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  zones       Zone[]
+  events      DetectionEvent[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Zone {
+  id            String   @id @default(uuid())
+  name          String
+  polygonPoints Json
+  enabled       Boolean  @default(true)
+  alertLevel    String   @default("medium")
+  cameraId      String
+  camera        Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model DetectionEvent {
+  id          String   @id @default(uuid())
+  eventType   String
+  personType  String?
+  severity    String   @default("info")
+  confidence  Float
+  trackId     Int?
+  boundingBox Json?
+  screenshot  String?
+  timestamp   DateTime @default(now())
+  cameraId    String
+  camera      Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+}
+
+model FamilyMember {
+  id            String   @id @default(uuid())
+  name          String
+  photoUrl      String?
+  faceEmbedding Json?
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model RestrictedPerson {
+  id            String   @id @default(uuid())
+  name          String
+  photoUrl      String?
+  faceEmbedding Json?
+  notes         String?
+  priority      String   @default("high")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
