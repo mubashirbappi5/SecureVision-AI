@@ -104,7 +104,10 @@ export default function Dashboard() {
 
     // Connect to the API socket server
     const socket = io(API_URL, {
-      auth: { token }
+      auth: { token },
+      extraHeaders: {
+        "ngrok-skip-browser-warning": "true"
+      }
     });
 
     socket.on("connect", () => {
