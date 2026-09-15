@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { io } from "socket.io-client";
 import { DetectionEvent } from "@securevision/shared-types";
-import { Shield, AlertTriangle, Camera, Activity, Server, Users, LogOut } from "lucide-react";
+import { Shield, AlertTriangle, Camera, Activity, Server, Users, LogOut, Monitor, Smartphone, Video } from "lucide-react";
 
 export default function Dashboard() {
   const [events, setEvents] = useState<DetectionEvent[]>([]);
@@ -494,15 +494,26 @@ export default function Dashboard() {
               {/* Step 2 */}
               {wizardStep === 2 && (
                 <div className="animate-in slide-in-from-right-4">
-                  <h3 className="text-xl font-medium mb-4">Source Type</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <h3 className="text-xl font-medium mb-4">Select Source Type</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button onClick={() => setWizSourceType('rtsp')} className={`p-4 rounded-xl border-2 text-left transition-all ${wizSourceType === 'rtsp' ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
-                      <div className="font-semibold mb-1">IP Camera (RTSP)</div>
-                      <div className="text-xs text-slate-400">Hikvision, Dahua, or any ONVIF/RTSP compatible network camera.</div>
+                      <div className="font-semibold mb-1 flex items-center gap-2"><Camera className="w-4 h-4"/> CC Camera (IP/RTSP)</div>
+                      <div className="text-xs text-slate-400">Hikvision, Dahua, or ONVIF network camera.</div>
                     </button>
-                    <button onClick={() => setWizSourceType('webcam')} className={`p-4 rounded-xl border-2 text-left transition-all ${wizSourceType === 'webcam' ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
-                      <div className="font-semibold mb-1">USB Webcam</div>
-                      <div className="text-xs text-slate-400">Local webcam connected directly to the gateway computer.</div>
+                    
+                    <button onClick={() => { setWizSourceType('laptop'); setWizUrl('0'); }} className={`p-4 rounded-xl border-2 text-left transition-all ${wizSourceType === 'laptop' ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
+                      <div className="font-semibold mb-1 flex items-center gap-2"><Monitor className="w-4 h-4"/> Laptop Camera</div>
+                      <div className="text-xs text-slate-400">Built-in webcam of the Gateway PC (Index 0).</div>
+                    </button>
+
+                    <button onClick={() => { setWizSourceType('mobile'); setWizUrl('http://'); }} className={`p-4 rounded-xl border-2 text-left transition-all ${wizSourceType === 'mobile' ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
+                      <div className="font-semibold mb-1 flex items-center gap-2"><Smartphone className="w-4 h-4"/> Mobile Camera</div>
+                      <div className="text-xs text-slate-400">Use your phone as a camera via an IP Webcam app.</div>
+                    </button>
+
+                    <button onClick={() => { setWizSourceType('webcam'); setWizUrl('1'); }} className={`p-4 rounded-xl border-2 text-left transition-all ${wizSourceType === 'webcam' ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
+                      <div className="font-semibold mb-1 flex items-center gap-2"><Video className="w-4 h-4"/> External USB Webcam</div>
+                      <div className="text-xs text-slate-400">External webcam connected to the Gateway.</div>
                     </button>
                   </div>
                 </div>
@@ -512,25 +523,51 @@ export default function Dashboard() {
               {wizardStep === 3 && (
                 <div className="animate-in slide-in-from-right-4">
                   <h3 className="text-xl font-medium mb-4">Connection Details</h3>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">
-                    {wizSourceType === 'rtsp' ? 'RTSP URL' : 'Webcam Index'}
-                  </label>
-                  <input type="text" value={wizUrl} onChange={e => setWizUrl(e.target.value)} placeholder={wizSourceType === 'rtsp' ? "rtsp://192.168.1.100:554/Streaming/Channels/101" : "0"} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 outline-none mb-4" />
                   
-                  {wizSourceType === 'rtsp' && (
+                  {wizSourceType === 'laptop' && (
+                    <div className="p-4 bg-emerald-950/30 border border-emerald-900/50 rounded-lg text-sm text-emerald-400 mb-4">
+                      The default index <strong>0</strong> is selected for the built-in laptop camera.
+                    </div>
+                  )}
+
+                  {wizSourceType === 'mobile' && (
+                    <div className="p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg text-sm text-blue-300 mb-4">
+                      <strong>How to connect a mobile camera:</strong>
+                      <ol className="list-decimal ml-5 mt-2 space-y-1">
+                        <li>Install an app like <strong>IP Webcam</strong> (Android) or <strong>IP Camera Lite</strong> (iOS).</li>
+                        <li>Connect your phone to the same WiFi network as the Gateway.</li>
+                        <li>Start the server in the app and enter the provided URL below (e.g., <code className="bg-blue-900/50 px-1 rounded">http://192.168.1.5:8080/video</code>).</li>
+                      </ol>
+                    </div>
+                  )}
+
+                  <label className="block text-sm font-medium text-slate-400 mb-2">
+                    {wizSourceType === 'rtsp' ? 'RTSP URL' : wizSourceType === 'mobile' ? 'Mobile IP URL' : 'Webcam Index'}
+                  </label>
+                  <input 
+                    type="text" 
+                    value={wizUrl} 
+                    onChange={e => setWizUrl(e.target.value)} 
+                    placeholder={wizSourceType === 'rtsp' ? "rtsp://192.168.1.100:554/Streaming/Channels/101" : wizSourceType === 'mobile' ? "http://192.168.1.x:8080/video" : "0"} 
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 outline-none mb-4" 
+                    readOnly={wizSourceType === 'laptop'}
+                  />
+                  
+                  {(wizSourceType === 'rtsp' || wizSourceType === 'mobile') && (
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-2">Username</label>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Username (Optional)</label>
                         <input type="text" value={wizUsername} onChange={e => setWizUsername(e.target.value)} placeholder="admin" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 outline-none" />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-2">Password</label>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Password (Optional)</label>
                         <input type="password" value={wizPassword} onChange={e => setWizPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 outline-none" />
                       </div>
                     </div>
                   )}
-                  <div className="mt-4 p-3 bg-blue-950/40 border border-blue-900/50 rounded-lg text-xs text-blue-300">
-                    <strong>Note:</strong> Local camera addresses (e.g. 192.168.x.x) are only accessible inside your local network. The Camera Gateway will bridge this securely.
+                  
+                  <div className="mt-4 p-3 bg-slate-900/80 border border-slate-800 rounded-lg text-xs text-slate-400">
+                    <strong>Note:</strong> Local network addresses (e.g. 192.168.x.x) will be securely routed through the assigned Gateway.
                   </div>
                 </div>
               )}
