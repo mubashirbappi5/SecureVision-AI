@@ -34,4 +34,35 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    const camera = await prisma.camera.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!camera) {
+      return res.status(404).json({ error: 'Camera not found' });
+    }
+    res.json(camera);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch camera' });
+  }
+});
+
+router.put('/:id', async (req, res) => {
+  const { url, name, sourceType } = req.body;
+  try {
+    const camera = await prisma.camera.update({
+      where: { id: req.params.id },
+      data: {
+        ...(url && { url }),
+        ...(name && { name }),
+        ...(sourceType && { sourceType }),
+      }
+    });
+    res.json(camera);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update camera' });
+  }
+});
+
 export default router;

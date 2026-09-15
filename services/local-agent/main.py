@@ -128,43 +128,76 @@ def main():
             time.sleep(1.0)
         return
 
-    # Parse integer source for webcams, otherwise leave as string (URL/Path)
-    if isinstance(source, str) and source.isdigit():
-        source = int(source)
+    # Fetch Initial Camera Config if no explicit source
+    current_camera_url = str(source) if source else None
+    
+    def fetch_camera_config():
+        try:
+            res = requests.get(f"http://localhost:3001/api/cameras/{camera_id}", timeout=2.0)
+            if res.status_code == 200:
+                data = res.json()
+                return data.get("url")
+        except Exception as e:
+            pass
+        return None
 
-    def connect_stream():
-        print(f"Connecting to stream: {source}...")
-        cap = cv2.VideoCapture(source)
+    if not current_camera_url:
+        print(f"Fetching config for camera {camera_id} from API...")
+        current_camera_url = fetch_camera_config()
+        if not current_camera_url:
+            print("Failed to fetch camera config. Using default webcam (0).")
+            current_camera_url = "0"
+            
+    # Parse integer source for webcams
+    if isinstance(current_camera_url, str) and current_camera_url.isdigit():
+        current_camera_url = int(current_camera_url)
+
+    def connect_stream(url):
+        print(f"Connecting to stream: {url}...")
+        cap = cv2.VideoCapture(url)
         if not cap.isOpened():
-            print(f"Warning: Could not open video source {source}")
+            print(f"Warning: Could not open video source {url}")
             return None
         print("Stream connected successfully.")
         return cap
 
-    cap = connect_stream()
+    cap = connect_stream(current_camera_url)
     
     while cap is None:
         print("Retrying connection in 5 seconds...")
         time.sleep(5.0)
-        cap = connect_stream()
-
-    if not cap.isOpened():
-        print(f"Error: Could not open video source {source}")
-        return
+        # Maybe config changed while failing?
+        new_url = fetch_camera_config()
+        if new_url and new_url != str(current_camera_url):
+            current_camera_url = int(new_url) if new_url.isdigit() else new_url
+        cap = connect_stream(current_camera_url)
 
     print("Starting video stream...")
     
     last_event_time = {}
     last_check_time = time.time()
+    last_config_check_time = time.time()
 
     while True:
         if cap is None or not cap.isOpened():
-            cap = connect_stream()
+            cap = connect_stream(current_camera_url)
             if cap is None:
                 time.sleep(5.0)
                 continue
 
         current_time = time.time()
+        
+        # Hot reload camera config every 10 seconds
+        if current_time - last_config_check_time > 10.0:
+            last_config_check_time = current_time
+            new_url = fetch_camera_config()
+            if new_url and new_url != str(current_camera_url):
+                print(f"Camera config changed from {current_camera_url} to {new_url}! Reconnecting...")
+                current_camera_url = int(new_url) if new_url.isdigit() else new_url
+                if cap: cap.release()
+                cap = connect_stream(current_camera_url)
+                if cap is None:
+                    continue
         
         # Hot reload face recognizer every 5 seconds if folders changed
         if current_time - last_check_time > 5.0:

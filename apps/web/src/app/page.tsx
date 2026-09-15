@@ -16,6 +16,13 @@ export default function Dashboard() {
   const [uploadCategory, setUploadCategory] = useState<"friend" | "enemy">("friend");
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{type: "success" | "error", message: string} | null>(null);
+  
+  // Camera Config State
+  const [cameras, setCameras] = useState<any[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
+  const [cameraUrl, setCameraUrl] = useState<string>("");
+  const [cameraSaving, setCameraSaving] = useState(false);
+  const [cameraSaveStatus, setCameraSaveStatus] = useState<{type: "success" | "error", message: string} | null>(null);
 
   const router = useRouter();
 
@@ -26,14 +33,16 @@ export default function Dashboard() {
       return;
     }
 
-    const fetchEvents = async () => {
+    const fetchEventsAndCameras = async () => {
       try {
-        const res = await fetch("http://localhost:3001/api/events", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          // Transform DB events (which use camelCase) to match the DetectionEvent type (which expects snake_case from the python agent, or we just map it)
+        const headers = { Authorization: `Bearer ${token}` };
+        const [evRes, camRes] = await Promise.all([
+          fetch("http://localhost:3001/api/events", { headers }),
+          fetch("http://localhost:3001/api/cameras", { headers })
+        ]);
+        
+        if (evRes.ok) {
+          const data = await evRes.json();
           const mapped = data.map((ev: any) => ({
             id: ev.id,
             camera_id: ev.cameraId,
@@ -47,14 +56,23 @@ export default function Dashboard() {
           }));
           setEvents(mapped);
         }
+        
+        if (camRes.ok) {
+          const camData = await camRes.json();
+          setCameras(camData);
+          if (camData.length > 0) {
+            setSelectedCameraId(camData[0].id);
+            setCameraUrl(camData[0].url);
+          }
+        }
       } catch (err) {
-        console.error("Failed to fetch events", err);
+        console.error("Failed to fetch data", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchEvents();
+    fetchEventsAndCameras();
 
     // Connect to the API socket server
     const socket = io("http://localhost:3001", {
@@ -113,6 +131,37 @@ export default function Dashboard() {
       setUploadStatus({ type: "error", message: "Network error during upload." });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleCameraSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCameraId || !cameraUrl) return;
+    
+    setCameraSaving(true);
+    setCameraSaveStatus(null);
+    const token = localStorage.getItem("sv_token");
+    
+    try {
+      const res = await fetch(`http://localhost:3001/api/cameras/${selectedCameraId}`, {
+        method: "PUT",
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ url: cameraUrl })
+      });
+      
+      if (res.ok) {
+        setCameraSaveStatus({ type: "success", message: "Camera URL updated! AI Agent will reconnect shortly." });
+      } else {
+        const data = await res.json();
+        setCameraSaveStatus({ type: "error", message: data.error || "Failed to update camera." });
+      }
+    } catch (err) {
+      setCameraSaveStatus({ type: "error", message: "Network error." });
+    } finally {
+      setCameraSaving(false);
     }
   };
 
@@ -252,6 +301,66 @@ export default function Dashboard() {
             <div className={`mt-4 p-3 rounded-lg text-sm flex items-center gap-2 ${uploadStatus.type === 'success' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800' : 'bg-red-900/30 text-red-400 border border-red-800'}`}>
               <div className={`w-2 h-2 rounded-full ${uploadStatus.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {uploadStatus.message}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Camera Configuration Section */}
+      <div className="mt-6 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Camera className="w-4 h-4"/> Camera Source Configuration
+          </h2>
+        </div>
+        <div className="p-6">
+          {cameras.length === 0 ? (
+            <div className="text-slate-400 text-sm">No cameras found in database. Create one using the API first.</div>
+          ) : (
+            <form onSubmit={handleCameraSave} className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="w-full md:w-64">
+                <label className="block text-sm font-medium text-slate-400 mb-2">Select Camera</label>
+                <select 
+                  value={selectedCameraId}
+                  onChange={(e) => {
+                    setSelectedCameraId(e.target.value);
+                    const cam = cameras.find(c => c.id === e.target.value);
+                    if (cam) setCameraUrl(cam.url);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
+                >
+                  {cameras.map(cam => (
+                    <option key={cam.id} value={cam.id}>{cam.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex-1 w-full">
+                <label className="block text-sm font-medium text-slate-400 mb-2">Connection URL (RTSP / Webcam Index)</label>
+                <input 
+                  type="text" 
+                  value={cameraUrl}
+                  onChange={(e) => setCameraUrl(e.target.value)}
+                  placeholder="rtsp://... or 0"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
+                  required
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={cameraSaving || !cameraUrl}
+                className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cameraSaving ? "Saving..." : "Save Config"}
+              </button>
+            </form>
+          )}
+
+          {cameraSaveStatus && (
+            <div className={`mt-4 p-3 rounded-lg text-sm flex items-center gap-2 ${cameraSaveStatus.type === 'success' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800' : 'bg-red-900/30 text-red-400 border border-red-800'}`}>
+              <div className={`w-2 h-2 rounded-full ${cameraSaveStatus.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              {cameraSaveStatus.message}
             </div>
           )}
         </div>
