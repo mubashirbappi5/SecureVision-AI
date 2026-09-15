@@ -48,7 +48,7 @@ export default function Dashboard() {
 
     const fetchEventsAndCameras = async () => {
       try {
-        const headers = { Authorization: `Bearer ${token}` };
+        const headers = { Authorization: `Bearer ${token}`, "ngrok-skip-browser-warning": "true" };
         const [eventsRes, camerasRes, gatewaysRes] = await Promise.all([
           fetch(`${API_URL}/api/events`, { headers }),
           fetch(`${API_URL}/api/cameras`, { headers }),
@@ -150,7 +150,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${API_URL}/api/faces/upload`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, "ngrok-skip-browser-warning": "true" },
         body: formData
       });
       
@@ -176,7 +176,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${API_URL}/api/cameras/test-connection`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
         body: JSON.stringify({
           url: wizUrl,
           username: wizUsername,
@@ -203,7 +203,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${API_URL}/api/cameras`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
         body: JSON.stringify({
           name: wizCamName,
           sourceType: wizSourceType,
