@@ -145,13 +145,13 @@ export default function Dashboard() {
               <div className="text-center text-slate-500 py-8">No events detected yet.</div>
             ) : (
               events.map((ev, i) => (
-                <div key={i} className={`bg-slate-800/50 border ${ev.severity === 'critical' ? 'border-red-900/50' : 'border-slate-700/50'} rounded-lg p-3 text-sm flex gap-3 animate-in fade-in slide-in-from-right-4 duration-300`}>
+                <div key={i} className={`bg-slate-800/50 border ${ev.severity === 'critical' ? 'border-red-900/50' : ev.severity === 'warning' ? 'border-yellow-900/50' : 'border-slate-700/50'} rounded-lg p-3 text-sm flex gap-3 animate-in fade-in slide-in-from-right-4 duration-300`}>
                   <div className="mt-1">
-                    <div className={`w-2 h-2 rounded-full ${ev.severity === 'critical' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`}></div>
+                    <div className={`w-2 h-2 rounded-full ${ev.severity === 'critical' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ev.severity === 'warning' ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.8)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`}></div>
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start mb-1">
-                      <span className={`font-medium capitalize ${ev.severity === 'critical' ? 'text-red-400' : 'text-emerald-400'}`}>
+                      <span className={`font-medium capitalize ${ev.severity === 'critical' ? 'text-red-400' : ev.severity === 'warning' ? 'text-yellow-400' : 'text-emerald-400'}`}>
                         {ev.person_type && ev.person_type !== "unknown" ? `${ev.person_type} detected` : ev.event_type.replace('_', ' ')}
                       </span>
                       <span className="text-xs text-slate-500">{new Date(ev.timestamp).toLocaleTimeString()}</span>

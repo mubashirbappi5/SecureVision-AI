@@ -40,29 +40,37 @@ def main():
     recognizer = cv2.face.LBPHFaceRecognizer_create()
     
     friends_dir = os.path.join("data", "friends")
+    enemies_dir = os.path.join("data", "enemies")
     face_samples = []
     face_labels = []
     
-    # Label 1 will mean "friend"
+    # Labels
     FRIEND_LABEL = 1
+    ENEMY_LABEL = 2
     
-    if os.path.exists(friends_dir):
-        print(f"Scanning for friends in {friends_dir}...")
-        for img_name in os.listdir(friends_dir):
-            if img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                img_path = os.path.join(friends_dir, img_name)
-                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                if img is None:
-                    continue
-                faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
-                for (x, y, w, h) in faces:
-                    face_roi = img[y:y+h, x:x+w]
-                    face_roi = cv2.resize(face_roi, (200, 200))
-                    face_samples.append(face_roi)
-                    face_labels.append(FRIEND_LABEL)
+    def load_faces_from_dir(directory, label):
+        if os.path.exists(directory):
+            print(f"Scanning for faces in {directory} (Label: {label})...")
+            for img_name in os.listdir(directory):
+                if img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    img_path = os.path.join(directory, img_name)
+                    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                    if img is None:
+                        continue
+                    faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
+                    for (x, y, w, h) in faces:
+                        face_roi = img[y:y+h, x:x+w]
+                        face_roi = cv2.resize(face_roi, (200, 200))
+                        face_samples.append(face_roi)
+                        face_labels.append(label)
+        else:
+            print(f"No directory found: {directory}")
+
+    load_faces_from_dir(friends_dir, FRIEND_LABEL)
+    load_faces_from_dir(enemies_dir, ENEMY_LABEL)
                     
-        if len(face_samples) > 0:
-            print(f"Training face recognizer on {len(face_samples)} friend faces...")
+    if len(face_samples) > 0:
+        print(f"Training face recognizer on {len(face_samples)} total faces...")
             recognizer.train(face_samples, np.array(face_labels))
             print("Training complete.")
         else:
@@ -160,9 +168,10 @@ def main():
                     x1, y1 = max(0, x1), max(0, y1)
                     x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
                     
-                    person_type = "enemy"
-                    severity = "critical"
-                    color = (0, 0, 255)
+                    # Default is Unknown
+                    person_type = "unknown"
+                    severity = "warning"
+                    color = (0, 255, 255)  # Yellow
                     
                     # Try Face Recognition if LBPH is trained
                     if len(face_samples) > 0 and (y2 - y1) > 0 and (x2 - x1) > 0:
@@ -175,12 +184,18 @@ def main():
                             face_roi = cv2.resize(face_roi, (200, 200))
                             label_id, distance = recognizer.predict(face_roi)
                             
-                            # Lower distance means better match (typical threshold for LBPH is < 80-100)
-                            if label_id == FRIEND_LABEL and distance < 85:
-                                person_type = "friend"
-                                severity = "info"
-                                color = (0, 255, 0)
-                                break  # matched a friend, no need to check other faces in this bbox
+                            # Lower distance means better match (typical threshold for LBPH is < 85)
+                            if distance < 85:
+                                if label_id == FRIEND_LABEL:
+                                    person_type = "friend"
+                                    severity = "info"
+                                    color = (0, 255, 0) # Green
+                                    break
+                                elif label_id == ENEMY_LABEL:
+                                    person_type = "enemy"
+                                    severity = "critical"
+                                    color = (0, 0, 255) # Red
+                                    break
                     
                     # Draw BBox
                     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
