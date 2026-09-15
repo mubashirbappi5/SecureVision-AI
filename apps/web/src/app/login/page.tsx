@@ -70,7 +70,8 @@ export default function LoginPage() {
               <div>
                 <label className="block text-sm font-medium text-neutral-300 mb-1">Email Address</label>
                 <input
-                  type="email"
+                  id="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-neutral-950/50 border border-neutral-800 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all placeholder-neutral-600"
