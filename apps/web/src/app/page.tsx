@@ -6,6 +6,8 @@ import { io } from "socket.io-client";
 import { DetectionEvent } from "@securevision/shared-types";
 import { Shield, AlertTriangle, Camera, Activity, Server, Users, LogOut, Monitor, Smartphone, Video } from "lucide-react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
 export default function Dashboard() {
   const [events, setEvents] = useState<DetectionEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -47,14 +49,14 @@ export default function Dashboard() {
     const fetchEventsAndCameras = async () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const [evRes, camRes, gwRes] = await Promise.all([
-          fetch("http://localhost:3001/api/events", { headers }),
-          fetch("http://localhost:3001/api/cameras", { headers }),
-          fetch("http://localhost:3001/api/gateways", { headers })
+        const [eventsRes, camerasRes, gatewaysRes] = await Promise.all([
+          fetch(`${API_URL}/api/events`, { headers }),
+          fetch(`${API_URL}/api/cameras`, { headers }),
+          fetch(`${API_URL}/api/gateways`, { headers })
         ]);
         
-        if (evRes.ok) {
-          const data = await evRes.json();
+        if (eventsRes.ok) {
+          const data = await eventsRes.json();
           const mapped = data.map((ev: any) => ({
             id: ev.id,
             camera_id: ev.cameraId,
@@ -90,7 +92,7 @@ export default function Dashboard() {
     fetchEventsAndCameras();
 
     // Connect to the API socket server
-    const socket = io("http://localhost:3001", {
+    const socket = io(API_URL, {
       auth: { token }
     });
 
@@ -135,7 +137,7 @@ export default function Dashboard() {
     formData.append("category", uploadCategory);
 
     try {
-      const res = await fetch("http://localhost:3001/api/faces/upload", {
+      const res = await fetch(`${API_URL}/api/faces/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -161,7 +163,7 @@ export default function Dashboard() {
     
     const token = localStorage.getItem("sv_token");
     try {
-      const res = await fetch(`http://localhost:3001/api/cameras/test-connection`, {
+      const res = await fetch(`${API_URL}/api/cameras/test-connection`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -188,7 +190,7 @@ export default function Dashboard() {
   const saveCamera = async () => {
     const token = localStorage.getItem("sv_token");
     try {
-      const res = await fetch(`http://localhost:3001/api/cameras`, {
+      const res = await fetch(`${API_URL}/api/cameras`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
