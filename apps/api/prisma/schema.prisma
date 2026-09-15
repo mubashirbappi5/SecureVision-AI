@@ -32,18 +32,22 @@ model Agent {
 }
 
 model Camera {
-  id          String   @id @default(uuid())
-  name        String
-  sourceType  String
-  url         String
-  enabled     Boolean  @default(true)
-  status      String   @default("offline")
-  agentId     String?
-  agent       Agent?   @relation(fields: [agentId], references: [id])
-  zones       Zone[]
-  events      DetectionEvent[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String   @id @default(uuid())
+  name              String
+  sourceType        String
+  connectionMode    String   @default("local_gateway")
+  url               String
+  username          String?
+  encryptedPassword String?
+  enabled           Boolean  @default(true)
+  status            String   @default("offline")
+  lastTestedAt      DateTime?
+  agentId           String?
+  agent             Agent?   @relation(fields: [agentId], references: [id])
+  zones             Zone[]
+  events            DetectionEvent[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model Zone {

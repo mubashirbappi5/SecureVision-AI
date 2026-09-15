@@ -11,6 +11,7 @@ import agentsRoutes from './routes/agents.routes';
 import camerasRoutes from './routes/cameras.routes';
 import eventsRoutes from './routes/events.routes';
 import facesRoutes from './routes/faces.routes';
+import gatewaysRoutes from './routes/gateways.routes';
 
 const app = express();
 app.use(cors());
@@ -22,9 +23,10 @@ app.use('/api/agents', agentsRoutes);
 app.use('/api/cameras', camerasRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/faces', facesRoutes);
+app.use('/api/gateways', gatewaysRoutes);
 
 const server = http.createServer(app);
-const io = new Server(server, {
+export const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
@@ -74,10 +76,23 @@ app.post('/api/detections', async (req, res) => {
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-  console.log('Web client connected:', socket.id);
+  console.log('Client connected:', socket.id);
+  
+  // Handle Gateway RTSP test responses
+  socket.on('test_rtsp_response', (data) => {
+    // Relay to the express router (already handled via io.on globally, but good to log)
+    console.log('Received RTSP test response:', data);
+  });
+
+  // Handle live MJPEG frames from the local Agent (Gateway)
+  socket.on('video_frame', (data) => {
+    // data = { cameraId: string, frame: string (base64) }
+    // Broadcast to all web clients
+    socket.broadcast.emit('live_video_frame', data);
+  });
   
   socket.on('disconnect', () => {
-    console.log('Web client disconnected:', socket.id);
+    console.log('Client disconnected:', socket.id);
   });
 });
 

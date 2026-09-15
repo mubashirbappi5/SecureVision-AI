@@ -19,10 +19,21 @@ export default function Dashboard() {
   
   // Camera Config State
   const [cameras, setCameras] = useState<any[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
-  const [cameraUrl, setCameraUrl] = useState<string>("");
-  const [cameraSaving, setCameraSaving] = useState(false);
-  const [cameraSaveStatus, setCameraSaveStatus] = useState<{type: "success" | "error", message: string} | null>(null);
+  const [gateways, setGateways] = useState<any[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>("demo_cam_01");
+  const [liveFrame, setLiveFrame] = useState<string | null>(null);
+  
+  // Wizard State
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [wizCamName, setWizCamName] = useState("");
+  const [wizSourceType, setWizSourceType] = useState("rtsp");
+  const [wizUrl, setWizUrl] = useState("");
+  const [wizUsername, setWizUsername] = useState("");
+  const [wizPassword, setWizPassword] = useState("");
+  const [wizGatewayId, setWizGatewayId] = useState("");
+  const [wizTestStatus, setWizTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [wizTestMessage, setWizTestMessage] = useState("");
 
   const router = useRouter();
 
@@ -36,9 +47,10 @@ export default function Dashboard() {
     const fetchEventsAndCameras = async () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const [evRes, camRes] = await Promise.all([
+        const [evRes, camRes, gwRes] = await Promise.all([
           fetch("http://localhost:3001/api/events", { headers }),
-          fetch("http://localhost:3001/api/cameras", { headers })
+          fetch("http://localhost:3001/api/cameras", { headers }),
+          fetch("http://localhost:3001/api/gateways", { headers })
         ]);
         
         if (evRes.ok) {
@@ -60,10 +72,13 @@ export default function Dashboard() {
         if (camRes.ok) {
           const camData = await camRes.json();
           setCameras(camData);
-          if (camData.length > 0) {
+          if (camData.length > 0 && !selectedCameraId) {
             setSelectedCameraId(camData[0].id);
-            setCameraUrl(camData[0].url);
           }
+        }
+        
+        if (gwRes.ok) {
+          setGateways(await gwRes.json());
         }
       } catch (err) {
         console.error("Failed to fetch data", err);
@@ -90,11 +105,17 @@ export default function Dashboard() {
     socket.on("new_event", (event: DetectionEvent) => {
       setEvents((prev) => [event, ...prev].slice(0, 50)); // Keep last 50 events
     });
+    
+    socket.on("live_video_frame", (data: any) => {
+      if (data.cameraId === selectedCameraId || data.cameraId === 'demo_cam_01') {
+        setLiveFrame(data.frame);
+      }
+    });
 
     return () => {
       socket.disconnect();
     };
-  }, [router]);
+  }, [router, selectedCameraId]);
 
   const handleLogout = () => {
     localStorage.removeItem("sv_token");
@@ -134,35 +155,72 @@ export default function Dashboard() {
     }
   };
 
-  const handleCameraSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCameraId || !cameraUrl) return;
+  const testConnection = async () => {
+    setWizTestStatus("testing");
+    setWizTestMessage("Connecting to gateway and verifying RTSP stream...");
     
-    setCameraSaving(true);
-    setCameraSaveStatus(null);
     const token = localStorage.getItem("sv_token");
-    
     try {
-      const res = await fetch(`http://localhost:3001/api/cameras/${selectedCameraId}`, {
-        method: "PUT",
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ url: cameraUrl })
+      const res = await fetch(`http://localhost:3001/api/cameras/test-connection`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: wizUrl,
+          username: wizUsername,
+          password: wizPassword,
+          agentId: wizGatewayId
+        })
       });
-      
+      const data = await res.json();
       if (res.ok) {
-        setCameraSaveStatus({ type: "success", message: "Camera URL updated! AI Agent will reconnect shortly." });
+        setWizTestStatus("success");
+        setWizTestMessage("✓ Camera connected successfully!");
       } else {
-        const data = await res.json();
-        setCameraSaveStatus({ type: "error", message: data.error || "Failed to update camera." });
+        setWizTestStatus("error");
+        setWizTestMessage(data.error || "Authentication Failed or Camera Offline");
       }
     } catch (err) {
-      setCameraSaveStatus({ type: "error", message: "Network error." });
-    } finally {
-      setCameraSaving(false);
+      setWizTestStatus("error");
+      setWizTestMessage("Gateway timeout or network error.");
     }
+  };
+
+  const saveCamera = async () => {
+    const token = localStorage.getItem("sv_token");
+    try {
+      const res = await fetch(`http://localhost:3001/api/cameras`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: wizCamName,
+          sourceType: wizSourceType,
+          connectionMode: "local_gateway",
+          url: wizUrl,
+          username: wizUsername,
+          password: wizPassword,
+          agentId: wizGatewayId
+        })
+      });
+      if (res.ok) {
+        setWizardOpen(false);
+        // Refresh page to load new camera
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const resetWizard = () => {
+    setWizardStep(1);
+    setWizCamName("");
+    setWizSourceType("rtsp");
+    setWizUrl("");
+    setWizUsername("");
+    setWizPassword("");
+    setWizGatewayId("");
+    setWizTestStatus("idle");
+    setWizTestMessage("");
   };
 
   if (loading) {
@@ -193,7 +251,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-3 text-slate-400 mb-2"><Camera className="w-5 h-5"/> Total Cameras</div>
-          <div className="text-3xl font-semibold">1 Active</div>
+          <div className="text-3xl font-semibold">{cameras.length} Active</div>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-3 text-slate-400 mb-2"><Users className="w-5 h-5"/> Detections (Today)</div>
@@ -204,8 +262,8 @@ export default function Dashboard() {
           <div className="text-3xl font-semibold text-red-400">0</div>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-3 text-slate-400 mb-2"><Server className="w-5 h-5"/> Agent Status</div>
-          <div className="text-lg font-semibold text-emerald-400">Online</div>
+          <div className="flex items-center gap-3 text-slate-400 mb-2"><Server className="w-5 h-5"/> Gateways</div>
+          <div className="text-lg font-semibold text-emerald-400">{gateways.length} Online</div>
         </div>
       </div>
 
@@ -213,15 +271,29 @@ export default function Dashboard() {
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
           <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
             <h2 className="font-semibold flex items-center gap-2"><Activity className="w-4 h-4"/> Live Camera Feed (Demo)</h2>
-            <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300">camera_01</span>
+            <select 
+              value={selectedCameraId}
+              onChange={e => setSelectedCameraId(e.target.value)}
+              className="text-xs bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-300"
+            >
+              {cameras.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {cameras.length === 0 && <option value="demo_cam_01">demo_cam_01</option>}
+            </select>
           </div>
-          <div className="flex-1 bg-black flex items-center justify-center min-h-[400px] text-slate-600">
-            {/* Real video feed will go here. The local agent displays it via OpenCV for now. */}
-            <div className="text-center">
-              <Camera className="w-12 h-12 mx-auto mb-2 opacity-20" />
-              <p>Live stream preview is handled by Local Agent window in Phase 1.</p>
-              <p className="text-sm mt-2">Watch the "Recent Events" feed for detections.</p>
-            </div>
+          <div className="flex-1 bg-black flex items-center justify-center min-h-[400px] text-slate-600 overflow-hidden relative">
+            {liveFrame ? (
+              <img src={liveFrame} alt="Live Stream" className="w-full h-full object-contain" />
+            ) : (
+              <div className="text-center p-6">
+                <Camera className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                <p>Waiting for video stream via Gateway...</p>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></div>
+                  <div className="w-2 h-2 rounded-full bg-slate-600 animate-pulse delay-75"></div>
+                  <div className="w-2 h-2 rounded-full bg-slate-600 animate-pulse delay-150"></div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -306,65 +378,280 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Camera Configuration Section */}
-      <div className="mt-6 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
-          <h2 className="font-semibold flex items-center gap-2">
-            <Camera className="w-4 h-4"/> Camera Source Configuration
-          </h2>
+      {/* Cameras & Gateways Lists */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Gateways */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Server className="w-4 h-4"/> Registered Gateways
+            </h2>
+          </div>
+          <div className="p-0">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-slate-400 bg-slate-950/50 border-b border-slate-800">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Gateway Name</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Token ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gateways.length === 0 && (
+                  <tr><td colSpan={3} className="px-4 py-4 text-center text-slate-500">No gateways found. Run the local agent to register one.</td></tr>
+                )}
+                {gateways.map(g => (
+                  <tr key={g.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30">
+                    <td className="px-4 py-3 font-medium">{g.name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded text-xs ${g.status === 'online' ? 'bg-emerald-900/40 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                        {g.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">{g.id.substring(0,8)}...</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div className="p-6">
-          {cameras.length === 0 ? (
-            <div className="text-slate-400 text-sm">No cameras found in database. Create one using the API first.</div>
-          ) : (
-            <form onSubmit={handleCameraSave} className="flex flex-col md:flex-row gap-4 items-end">
-              <div className="w-full md:w-64">
-                <label className="block text-sm font-medium text-slate-400 mb-2">Select Camera</label>
-                <select 
-                  value={selectedCameraId}
-                  onChange={(e) => {
-                    setSelectedCameraId(e.target.value);
-                    const cam = cameras.find(c => c.id === e.target.value);
-                    if (cam) setCameraUrl(cam.url);
-                  }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-                >
-                  {cameras.map(cam => (
-                    <option key={cam.id} value={cam.id}>{cam.name}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="flex-1 w-full">
-                <label className="block text-sm font-medium text-slate-400 mb-2">Connection URL (RTSP / Webcam Index)</label>
-                <input 
-                  type="text" 
-                  value={cameraUrl}
-                  onChange={(e) => setCameraUrl(e.target.value)}
-                  placeholder="rtsp://... or 0"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-                  required
-                />
-              </div>
 
-              <button 
-                type="submit" 
-                disabled={cameraSaving || !cameraUrl}
-                className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {cameraSaving ? "Saving..." : "Save Config"}
-              </button>
-            </form>
-          )}
-
-          {cameraSaveStatus && (
-            <div className={`mt-4 p-3 rounded-lg text-sm flex items-center gap-2 ${cameraSaveStatus.type === 'success' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800' : 'bg-red-900/30 text-red-400 border border-red-800'}`}>
-              <div className={`w-2 h-2 rounded-full ${cameraSaveStatus.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-              {cameraSaveStatus.message}
-            </div>
-          )}
+        {/* Camera List & Wizard Trigger */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Camera className="w-4 h-4"/> Camera Management
+            </h2>
+            <button 
+              onClick={() => { resetWizard(); setWizardOpen(true); }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition-colors"
+            >
+              + Add Camera
+            </button>
+          </div>
+          <div className="p-0">
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-slate-400 bg-slate-950/50 border-b border-slate-800">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Camera Name</th>
+                  <th className="px-4 py-3 font-medium">Source</th>
+                  <th className="px-4 py-3 font-medium">Gateway</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cameras.length === 0 && (
+                  <tr><td colSpan={3} className="px-4 py-4 text-center text-slate-500">No cameras configured.</td></tr>
+                )}
+                {cameras.map(c => (
+                  <tr key={c.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-800/30">
+                    <td className="px-4 py-3 font-medium">{c.name}</td>
+                    <td className="px-4 py-3 text-slate-400 uppercase text-xs">{c.sourceType}</td>
+                    <td className="px-4 py-3 text-slate-400">{gateways.find(g => g.id === c.agentId)?.name || "Unknown"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+
+      {/* Camera Setup Wizard Modal */}
+      {wizardOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Camera className="w-5 h-5 text-emerald-400" />
+                Add New Camera
+              </h2>
+              <button onClick={() => setWizardOpen(false)} className="text-slate-400 hover:text-white">&times;</button>
+            </div>
+            
+            <div className="p-6 flex-1 overflow-y-auto">
+              {/* Step indicator */}
+              <div className="flex justify-between mb-8 relative">
+                <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-800 -z-10 -translate-y-1/2"></div>
+                {[1,2,3,4,5,6].map(step => (
+                  <div key={step} className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2 
+                    ${wizardStep === step ? 'bg-emerald-600 border-emerald-500 text-white' : 
+                      wizardStep > step ? 'bg-emerald-900/50 border-emerald-700 text-emerald-400' : 'bg-slate-900 border-slate-700 text-slate-500'}`}
+                  >
+                    {step}
+                  </div>
+                ))}
+              </div>
+
+              {/* Step 1 */}
+              {wizardStep === 1 && (
+                <div className="animate-in slide-in-from-right-4">
+                  <h3 className="text-xl font-medium mb-4">Camera Information</h3>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">Camera Name</label>
+                  <input type="text" value={wizCamName} onChange={e => setWizCamName(e.target.value)} placeholder="e.g. Front Door Camera" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all" autoFocus />
+                  <p className="text-xs text-slate-500 mt-2">A descriptive name for your camera.</p>
+                </div>
+              )}
+
+              {/* Step 2 */}
+              {wizardStep === 2 && (
+                <div className="animate-in slide-in-from-right-4">
+                  <h3 className="text-xl font-medium mb-4">Source Type</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button onClick={() => setWizSourceType('rtsp')} className={`p-4 rounded-xl border-2 text-left transition-all ${wizSourceType === 'rtsp' ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
+                      <div className="font-semibold mb-1">IP Camera (RTSP)</div>
+                      <div className="text-xs text-slate-400">Hikvision, Dahua, or any ONVIF/RTSP compatible network camera.</div>
+                    </button>
+                    <button onClick={() => setWizSourceType('webcam')} className={`p-4 rounded-xl border-2 text-left transition-all ${wizSourceType === 'webcam' ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
+                      <div className="font-semibold mb-1">USB Webcam</div>
+                      <div className="text-xs text-slate-400">Local webcam connected directly to the gateway computer.</div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3 */}
+              {wizardStep === 3 && (
+                <div className="animate-in slide-in-from-right-4">
+                  <h3 className="text-xl font-medium mb-4">Connection Details</h3>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">
+                    {wizSourceType === 'rtsp' ? 'RTSP URL' : 'Webcam Index'}
+                  </label>
+                  <input type="text" value={wizUrl} onChange={e => setWizUrl(e.target.value)} placeholder={wizSourceType === 'rtsp' ? "rtsp://192.168.1.100:554/Streaming/Channels/101" : "0"} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 outline-none mb-4" />
+                  
+                  {wizSourceType === 'rtsp' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Username</label>
+                        <input type="text" value={wizUsername} onChange={e => setWizUsername(e.target.value)} placeholder="admin" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Password</label>
+                        <input type="password" value={wizPassword} onChange={e => setWizPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-slate-200 focus:border-emerald-500 outline-none" />
+                      </div>
+                    </div>
+                  )}
+                  <div className="mt-4 p-3 bg-blue-950/40 border border-blue-900/50 rounded-lg text-xs text-blue-300">
+                    <strong>Note:</strong> Local camera addresses (e.g. 192.168.x.x) are only accessible inside your local network. The Camera Gateway will bridge this securely.
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4 */}
+              {wizardStep === 4 && (
+                <div className="animate-in slide-in-from-right-4">
+                  <h3 className="text-xl font-medium mb-4">Assign to Gateway</h3>
+                  <p className="text-sm text-slate-400 mb-4">Select the Local Gateway that has physical network access to this camera.</p>
+                  
+                  {gateways.length === 0 ? (
+                    <div className="p-4 bg-yellow-950/40 border border-yellow-900/50 rounded-lg text-sm text-yellow-300">
+                      No gateways found. Please run the Python Local AI Agent on your network first. It will auto-register.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {gateways.map(g => (
+                        <button key={g.id} onClick={() => setWizGatewayId(g.id)} className={`w-full p-4 rounded-xl border-2 text-left flex justify-between items-center transition-all ${wizGatewayId === g.id ? 'border-emerald-500 bg-emerald-900/20' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}>
+                          <div>
+                            <div className="font-semibold">{g.name}</div>
+                            <div className="text-xs text-slate-500 mt-1">Status: {g.status} | ID: {g.id.substring(0,8)}...</div>
+                          </div>
+                          {g.status === 'online' ? (
+                            <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                          ) : (
+                            <span className="w-3 h-3 rounded-full bg-slate-500"></span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 5 */}
+              {wizardStep === 5 && (
+                <div className="animate-in slide-in-from-right-4 text-center py-8">
+                  <h3 className="text-xl font-medium mb-2">Test Connection</h3>
+                  <p className="text-sm text-slate-400 mb-8">The backend will now ask the gateway to verify the RTSP stream.</p>
+                  
+                  {wizTestStatus === 'idle' && (
+                    <button onClick={testConnection} className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 px-8 rounded-xl transition-all shadow-lg hover:shadow-emerald-500/20">
+                      Run Connection Test
+                    </button>
+                  )}
+                  
+                  {wizTestStatus === 'testing' && (
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin mb-4"></div>
+                      <div className="text-emerald-400">{wizTestMessage}</div>
+                    </div>
+                  )}
+
+                  {wizTestStatus === 'success' && (
+                    <div className="p-4 bg-emerald-950/40 border border-emerald-900/50 rounded-xl text-emerald-400 flex items-center justify-center gap-3">
+                      <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm">✓</div>
+                      {wizTestMessage}
+                    </div>
+                  )}
+
+                  {wizTestStatus === 'error' && (
+                    <div className="p-4 bg-red-950/40 border border-red-900/50 rounded-xl text-red-400 flex flex-col items-center justify-center gap-2">
+                      <div className="font-semibold flex items-center gap-2"><AlertTriangle className="w-5 h-5"/> Connection Failed</div>
+                      <div className="text-sm">{wizTestMessage}</div>
+                      <button onClick={() => setWizTestStatus('idle')} className="mt-4 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-sm text-slate-300">Try Again</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 6 */}
+              {wizardStep === 6 && (
+                <div className="animate-in slide-in-from-right-4 text-center py-8">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center mb-4">
+                    <Shield className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-medium mb-2">Ready to Save</h3>
+                  <p className="text-sm text-slate-400 mb-8">Your camera is configured and connection is verified.</p>
+                  
+                  <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 text-left max-w-sm mx-auto mb-8 text-sm">
+                    <div className="flex justify-between mb-2"><span className="text-slate-500">Name:</span> <span className="text-slate-200">{wizCamName}</span></div>
+                    <div className="flex justify-between mb-2"><span className="text-slate-500">Source:</span> <span className="text-slate-200 uppercase">{wizSourceType}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Gateway:</span> <span className="text-slate-200">{gateways.find(g=>g.id===wizGatewayId)?.name}</span></div>
+                  </div>
+
+                  <button onClick={saveCamera} className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 px-12 rounded-xl transition-all shadow-lg hover:shadow-emerald-500/20 w-full sm:w-auto">
+                    Save Camera & Start Tracking
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 border-t border-slate-800 bg-slate-950/50 flex justify-between">
+              <button 
+                onClick={() => setWizardStep(prev => Math.max(1, prev - 1))}
+                disabled={wizardStep === 1 || wizTestStatus === 'testing'}
+                className="px-6 py-2 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed font-medium transition-colors"
+              >
+                Back
+              </button>
+              
+              {wizardStep < 6 && (
+                <button 
+                  onClick={() => setWizardStep(prev => Math.min(6, prev + 1))}
+                  disabled={
+                    (wizardStep === 1 && !wizCamName) ||
+                    (wizardStep === 3 && !wizUrl) ||
+                    (wizardStep === 4 && !wizGatewayId) ||
+                    (wizardStep === 5 && wizTestStatus !== 'success') ||
+                    wizTestStatus === 'testing'
+                  }
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 px-8 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -6,6 +6,8 @@ import uuid
 import datetime
 import os
 import numpy as np
+import base64
+import socketio
 from ultralytics import YOLO
 
 # Configuration
@@ -33,6 +35,51 @@ def main():
 
     camera_id = args.camera_id
     source = args.rtsp if args.rtsp else args.source
+
+    sio = socketio.Client()
+    
+    @sio.event
+    def connect():
+        print(f"Connected to backend Gateway WebSocket")
+    
+    @sio.event
+    def disconnect():
+        print("Disconnected from backend WebSocket")
+        
+    @sio.on('test_rtsp_connection')
+    def on_test_rtsp(data):
+        print("Received RTSP connection test request...", data)
+        # Verify the request is meant for this Gateway
+        # In a real app we'd verify agentId matches our local agent ID
+        url = data.get('url')
+        testId = data.get('testId')
+        
+        try:
+            test_cap = cv2.VideoCapture(url)
+            success = test_cap.isOpened()
+            if success:
+                # Try to read one frame to ensure stream is valid
+                ret, _ = test_cap.read()
+                success = ret
+            test_cap.release()
+            
+            sio.emit('test_rtsp_response', {
+                'testId': testId,
+                'success': success,
+                'error': None if success else 'Failed to connect to video stream or authentication failed.'
+            })
+            print(f"Test RTSP {'succeeded' if success else 'failed'}")
+        except Exception as e:
+            sio.emit('test_rtsp_response', {
+                'testId': testId,
+                'success': False,
+                'error': str(e)
+            })
+
+    try:
+        sio.connect("http://localhost:3001")
+    except Exception as e:
+        print(f"Warning: Could not connect to Socket.io backend: {e}")
 
     # Face Recognition Setup
     print("Initializing Face Recognition...")
@@ -304,6 +351,18 @@ def main():
                 send_event(event_data)
                 cv2.rectangle(frame, (10, 10), (100, 200), (0, 0, 255), 2)
                 cv2.putText(frame, "Enemy 99% (MOCK)", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+        # Emit MJPEG frame to Socket.io for the Dashboard
+        if sio.connected:
+            # Resize frame to save bandwidth
+            small_frame = cv2.resize(frame, (640, 360))
+            ret_enc, buffer = cv2.imencode('.jpg', small_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            if ret_enc:
+                jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+                sio.emit('video_frame', {
+                    'cameraId': camera_id,
+                    'frame': f"data:image/jpeg;base64,{jpg_as_text}"
+                })
 
         # Show live preview (disabled for background testing)
         # cv2.imshow("SecureVision Agent (Local Preview)", frame)
