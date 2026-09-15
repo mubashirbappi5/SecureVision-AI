@@ -35,34 +35,23 @@ To connect a physical camera to the platform, you first need to register it on t
 
 To actually capture the video and run AI detection, you need to start the Local AI Agent on the computer where the camera is connected or which is on the same WiFi/Network as your cameras.
 
-### Prerequisites
+### Prerequisites (One-time Setup)
 Make sure your computer has **Python (3.10+)** installed.
-
-### Setup (One-time)
-1. Download or open the `services/local-agent` folder in your terminal.
-2. Install the required Python packages:
+1. Download or open the `services/local-agent` folder.
+2. Open terminal in that folder and install the required packages:
    ```bash
    pip install -r requirements.txt
    ```
 
-### Start the Camera
-Run the agent using the **Camera ID** you copied in Step 2.
+### 1-Click Camera Startup
+We have made it incredibly simple to start your camera without any coding!
 
-**For a Laptop Webcam or USB Camera:**
-```bash
-python main.py --source 0 --camera-id "YOUR_COPIED_CAMERA_ID"
-```
+1. Open the `services/local-agent` folder on your computer.
+2. Double-click the **`Start_Camera.bat`** file.
+3. A black window will open. **If it's your first time**, it will ask you to paste your **Camera ID** (which you copied from the Dashboard). Paste it and press Enter.
+4. The system will save your ID and instantly start the camera! 
 
-**For a Mobile IP Camera:**
-```bash
-python main.py --source "http://192.168.x.x:8080/video" --camera-id "YOUR_COPIED_CAMERA_ID"
-```
-
-**For a CCTV / IP Camera (RTSP):**
-You will need the RTSP link of your CC camera (usually found in the camera's manual or network settings).
-```bash
-python main.py --rtsp "rtsp://username:password@192.168.x.x:554/Streaming/Channels/101" --camera-id "YOUR_COPIED_CAMERA_ID"
-```
+*(Note: The next time you double-click `Start_Camera.bat`, it won't ask for the ID again—it will start your camera automatically!)*
 
 ---
 
