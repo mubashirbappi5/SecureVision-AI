@@ -1,17 +1,58 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { io } from "socket.io-client";
 import { DetectionEvent } from "@securevision/shared-types";
-import { Shield, AlertTriangle, Camera, Activity, Server, Users } from "lucide-react";
+import { Shield, AlertTriangle, Camera, Activity, Server, Users, LogOut } from "lucide-react";
 
 export default function Dashboard() {
   const [events, setEvents] = useState<DetectionEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
+    const token = localStorage.getItem("sv_token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    const fetchEvents = async () => {
+      try {
+        const res = await fetch("http://localhost:3001/api/events", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Transform DB events (which use camelCase) to match the DetectionEvent type (which expects snake_case from the python agent, or we just map it)
+          const mapped = data.map((ev: any) => ({
+            id: ev.id,
+            camera_id: ev.cameraId,
+            timestamp: ev.timestamp,
+            event_type: ev.eventType,
+            person_type: ev.personType,
+            severity: ev.severity,
+            confidence: ev.confidence,
+            track_id: ev.trackId,
+            bounding_box: ev.boundingBox
+          }));
+          setEvents(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to fetch events", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+
     // Connect to the API socket server
-    const socket = io("http://localhost:3001");
+    const socket = io("http://localhost:3001", {
+      auth: { token }
+    });
 
     socket.on("connect", () => {
       setIsConnected(true);
@@ -28,7 +69,16 @@ export default function Dashboard() {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("sv_token");
+    router.push("/login");
+  };
+
+  if (loading) {
+    return <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">Loading Dashboard...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 p-6 font-sans">
@@ -38,13 +88,16 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">SecureVision AI</h1>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-800">
             <span className="relative flex h-3 w-3">
               {isConnected && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
               <span className={`relative inline-flex rounded-full h-3 w-3 ${isConnected ? "bg-emerald-500" : "bg-red-500"}`}></span>
             </span>
-            <span className="text-slate-400">{isConnected ? "API Connected" : "API Disconnected"}</span>
+            <span className="text-slate-400">{isConnected ? "Live" : "Offline"}</span>
           </div>
+          <button onClick={handleLogout} className="text-slate-400 hover:text-white transition-colors flex items-center gap-2 text-sm bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-800">
+            <LogOut className="w-4 h-4" /> Logout
+          </button>
         </div>
       </header>
 

@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import { DetectionEvent as ClientDetectionEvent } from '@securevision/shared-types';
 import { prisma } from './db/prisma';
+import { notificationEngine } from './services/notifications';
 
 import authRoutes from './routes/auth.routes';
 import agentsRoutes from './routes/agents.routes';
@@ -53,6 +54,9 @@ app.post('/api/detections', async (req, res) => {
           cameraId: event.camera_id,
         }
       });
+      
+      // Trigger notification engine
+      notificationEngine.processEvent(event);
     }
   } catch (error) {
     console.error("Failed to save event to DB:", error);

@@ -8,7 +8,6 @@ from ultralytics import YOLO
 
 # Configuration
 API_URL = "http://localhost:3001/api/detections"
-CAMERA_ID = "demo_cam_01"  # Will be dynamically assigned in Phase 20.5
 CONFIDENCE_THRESHOLD = 0.5
 EVENT_COOLDOWN = 2.0  # seconds between events for the same track_id
 
@@ -24,9 +23,14 @@ def send_event(event_data):
 
 def main():
     parser = argparse.ArgumentParser(description="SecureVision Local AI Agent")
-    parser.add_argument("--source", type=str, default="0", help="Camera index or RTSP/MP4 URL")
+    parser.add_argument("--source", type=str, default="0", help="Camera index, MP4 path, or RTSP URL")
+    parser.add_argument("--rtsp", type=str, default=None, help="Explicit RTSP URL (overrides --source)")
+    parser.add_argument("--camera-id", type=str, default="demo_cam_01", help="The UUID of this camera in the SecureVision database")
     parser.add_argument("--mock-detection", action="store_true", help="Force mock detections for testing")
     args = parser.parse_args()
+
+    camera_id = args.camera_id
+    source = args.rtsp if args.rtsp else args.source
 
     model = None
     if not args.mock_detection:
@@ -43,7 +47,7 @@ def main():
                 last_event_time["mock_1"] = current_time
                 event_data = {
                     "id": str(uuid.uuid4()),
-                    "camera_id": CAMERA_ID,
+                    "camera_id": camera_id,
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "event_type": "person_detected",
                     "person_type": "unknown",
@@ -56,8 +60,25 @@ def main():
             time.sleep(1.0)
         return
 
-    source = int(args.source) if args.source.isdigit() else args.source
-    cap = cv2.VideoCapture(source)
+    # Parse integer source for webcams, otherwise leave as string (URL/Path)
+    if isinstance(source, str) and source.isdigit():
+        source = int(source)
+
+    def connect_stream():
+        print(f"Connecting to stream: {source}...")
+        cap = cv2.VideoCapture(source)
+        if not cap.isOpened():
+            print(f"Warning: Could not open video source {source}")
+            return None
+        print("Stream connected successfully.")
+        return cap
+
+    cap = connect_stream()
+    
+    while cap is None:
+        print("Retrying connection in 5 seconds...")
+        time.sleep(5.0)
+        cap = connect_stream()
 
     if not cap.isOpened():
         print(f"Error: Could not open video source {source}")
@@ -68,11 +89,19 @@ def main():
     last_event_time = {}
 
     while True:
+        if cap is None or not cap.isOpened():
+            cap = connect_stream()
+            if cap is None:
+                time.sleep(5.0)
+                continue
+
         ret, frame = cap.read()
         if not ret:
-            print("End of stream or error reading frame.")
-            # For MP4 loops or reconnects in production, we'd handle it here
-            break
+            print("Warning: End of stream, frame dropped, or connection lost. Reconnecting...")
+            cap.release()
+            cap = None
+            time.sleep(2.0)
+            continue
 
         # Run inference (track mode for track_id) if not mocking fully
         if model is not None:
@@ -101,7 +130,7 @@ def main():
                         
                         event_data = {
                             "id": str(uuid.uuid4()),
-                            "camera_id": CAMERA_ID,
+                            "camera_id": camera_id,
                             "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                             "event_type": "person_detected",
                             "person_type": "unknown",
@@ -119,7 +148,7 @@ def main():
                 last_event_time["mock_1"] = current_time
                 event_data = {
                     "id": str(uuid.uuid4()),
-                    "camera_id": CAMERA_ID,
+                    "camera_id": camera_id,
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "event_type": "person_detected",
                     "person_type": "unknown",
