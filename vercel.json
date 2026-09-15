@@ -1,0 +1,18 @@
+{
+  "services": {
+    "securevision-api": {
+      "root": "apps/api",
+      "entrypoint": "src/index.ts",
+      "buildCommand": "npm install && npm run build"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "securevision-api"
+      }
+    }
+  ]
+}

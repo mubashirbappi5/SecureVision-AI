@@ -71,16 +71,27 @@ export default function Dashboard() {
           setEvents(mapped);
         }
         
-        if (camRes.ok) {
-          const camData = await camRes.json();
+        if (camerasRes.ok) {
+          const camData = await camerasRes.json();
           setCameras(camData);
           if (camData.length > 0 && !selectedCameraId) {
             setSelectedCameraId(camData[0].id);
           }
+        } else {
+          console.error("Failed to load cameras");
         }
         
-        if (gwRes.ok) {
-          setGateways(await gwRes.json());
+        if (gatewaysRes.ok) {
+          const gwData = await gatewaysRes.json();
+          // Map backend gateway models to frontend ones
+          setGateways(gwData.map((g: any) => ({
+            id: g.id,
+            name: g.name,
+            status: g.status,
+            lastSeen: g.lastSeen
+          })));
+        } else {
+          console.error("Failed to load gateways");
         }
       } catch (err) {
         console.error("Failed to fetch data", err);
@@ -308,16 +319,27 @@ export default function Dashboard() {
               <div className="text-center text-slate-500 py-8">No events detected yet.</div>
             ) : (
               events.map((ev, i) => (
-                <div key={i} className={`bg-slate-800/50 border ${ev.severity === 'critical' ? 'border-red-900/50' : ev.severity === 'warning' ? 'border-yellow-900/50' : 'border-slate-700/50'} rounded-lg p-3 text-sm flex gap-3 animate-in fade-in slide-in-from-right-4 duration-300`}>
+                <div key={i} className={`bg-slate-800/50 border ${ev.severity === 'high' ? 'border-red-900/50' : ev.severity === 'medium' ? 'border-yellow-900/50' : 'border-slate-700/50'} rounded-lg p-3 text-sm flex gap-3 animate-in fade-in slide-in-from-right-4 duration-300`}>
                   <div className="mt-1">
-                    <div className={`w-2 h-2 rounded-full ${ev.severity === 'critical' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ev.severity === 'warning' ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.8)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`}></div>
+                    <div className={`w-2 h-2 rounded-full ${ev.severity === 'high' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ev.severity === 'medium' ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.8)]' : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]'}`}></div>
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start mb-1">
-                      <span className={`font-medium capitalize ${ev.severity === 'critical' ? 'text-red-400' : ev.severity === 'warning' ? 'text-yellow-400' : 'text-emerald-400'}`}>
+                      <span className={`font-medium capitalize ${ev.severity === 'high' ? 'text-red-400' : ev.severity === 'medium' ? 'text-yellow-400' : 'text-blue-400'}`}>
                         {ev.person_type && ev.person_type !== "unknown" ? `${ev.person_type} detected` : ev.event_type.replace('_', ' ')}
                       </span>
-                      <span className="text-xs text-slate-500">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs flex items-center ${
+                          ev.severity === 'high' ? 'bg-red-950 text-red-400 border border-red-900/50' :
+                          ev.severity === 'medium' ? 'bg-yellow-950/50 text-yellow-400 border border-yellow-900/30' :
+                          'bg-blue-950/30 text-blue-400 border border-blue-900/30'
+                        }`}>
+                          {ev.severity === 'high' && <AlertTriangle className="w-3 h-3 mr-1" />}
+                          {ev.severity === 'medium' && <AlertTriangle className="w-3 h-3 mr-1" />}
+                          {ev.severity.toUpperCase()}
+                        </span>
+                        <span className="text-xs text-slate-500">{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                      </div>
                     </div>
                     <div className="text-slate-400 text-xs">
                       Confidence: {Math.round(ev.confidence * 100)}% | Track ID: {ev.track_id}
