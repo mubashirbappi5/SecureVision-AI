@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { io } from "socket.io-client";
 import { DetectionEvent } from "@securevision/shared-types";
-import { Shield, AlertTriangle, Camera, Activity, Server, Users, LogOut, Monitor, Smartphone, Video } from "lucide-react";
+import { Shield, AlertTriangle, Camera, Activity, Server, Users, LogOut, Monitor, Smartphone, Video, BarChart2 } from "lucide-react";
+import ActivityGraph from "../components/ActivityGraph";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -280,6 +281,17 @@ export default function Dashboard() {
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-3 text-slate-400 mb-2"><Server className="w-5 h-5"/> Gateways</div>
           <div className="text-lg font-semibold text-emerald-400">{gateways.length} Online</div>
+        </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mb-8">
+        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+          <h2 className="font-semibold flex items-center gap-2">
+            <BarChart2 className="w-4 h-4"/> Alert Activity (Recent)
+          </h2>
+        </div>
+        <div className="p-4">
+          <ActivityGraph events={events} />
         </div>
       </div>
 
